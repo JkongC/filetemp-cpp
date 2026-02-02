@@ -105,14 +105,29 @@ public:
                 }
                 obj.deserialize(std::span(buf.begin(), buf.end()));
             }
-
-            return true;
         }
         else
         {
-            auto read_count = std::fread(&obj, sizeof(obj), 1, self.m_handle.get());
-            return read_count == 1;
+            if (self.m_pre_fetch)
+            {
+                if (self.m_wholebuf.end() - self.m_wholebuf_it < sizeof(T))
+                {
+                    return false;
+                }
+                std::memcpy(&obj, &*self.m_wholebuf_it, sizeof(T));
+                self.m_wholebuf_it += sizeof(T);
+            }
+            else
+            {
+                auto read_count = std::fread(&obj, sizeof(obj), 1, self.m_handle.get());
+                if (read_count != 1)
+                {
+                    return false;
+                }
+            }
         }
+
+        return true;
     }
 
 private:
