@@ -1,0 +1,7 @@
+.vscode/
+build/
+bin/
+
+.clangd
+.clang-tidy
+vsc_configure.bat

@@ -1,0 +1,69 @@
+{
+  "version": 7,
+  "configurePresets": [
+    {
+      "name": "Visual Studio 2026",
+      "generator": "Visual Studio 18 2026",
+      "binaryDir": "${sourceDir}/build",
+      "architecture": "x64",
+      "toolset": "host=x64",
+      "displayName": "VS 2026"
+    },
+    {
+      "name": "Visual Studio Code",
+      "generator": "Ninja Multi-Config",
+      "binaryDir": "${sourceDir}/build",
+      "displayName": "VSCode"
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "vs-debug",
+      "displayName": "Debug",
+      "configurePreset": "Visual Studio 2026",
+      "configuration": "Debug"
+    },
+    {
+      "name": "vs-release",
+      "displayName": "Release",
+      "configurePreset": "Visual Studio 2026",
+      "configuration": "Release"
+    },
+    {
+      "name": "vs-relwithdebinfo",
+      "displayName": "RelWithDebInfo",
+      "configurePreset": "Visual Studio 2026",
+      "configuration": "RelWithDebInfo"
+    },
+    {
+      "name": "vs-minsizerel",
+      "displayName": "MinSizeRel",
+      "configurePreset": "Visual Studio 2026",
+      "configuration": "MinSizeRel"
+    },
+    {
+      "name": "vsc-debug",
+      "displayName": "Debug",
+      "configurePreset": "Visual Studio Code",
+      "configuration": "Debug"
+    },
+    {
+      "name": "vsc-release",
+      "displayName": "Release",
+      "configurePreset": "Visual Studio Code",
+      "configuration": "Release"
+    },
+    {
+      "name": "vsc-relwithdebinfo",
+      "displayName": "RelWithDebInfo",
+      "configurePreset": "Visual Studio Code",
+      "configuration": "RelWithDebInfo"
+    },
+    {
+      "name": "vsc-minsizerel",
+      "displayName": "MinSizeRel",
+      "configurePreset": "Visual Studio Code",
+      "configuration": "MinSizeRel"
+    }
+  ]
+}
