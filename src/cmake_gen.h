@@ -1,5 +1,5 @@
 #pragma once
-#include <argparse/argparse.hpp>
+#include <args.hpp>
 
 #include "log.hpp"
 #include "file_io.hpp"

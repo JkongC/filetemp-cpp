@@ -420,6 +420,10 @@ private:
         }
 
         auto fptr = std::fopen(reinterpret_cast<const char *>(file_path.u8string().c_str()), mode_flag(mode));
+        if (!fptr)
+        {
+            return;
+        }
         m_handle.reset(fptr);
 
         if (mode == FileMode::read && use_buffer && m_handle)

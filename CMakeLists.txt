@@ -13,7 +13,8 @@ target_sources(filetemp PRIVATE src/main.cpp
 src/file_io.hpp
 src/log.hpp
 src/cmake_gen.h
-src/cmake_gen.cpp)
+src/cmake_gen.cpp
+src/args.hpp)
 
 target_include_directories(filetemp PRIVATE src)
 
@@ -21,6 +22,11 @@ set(SPDLOG_USE_STD_FORMAT ON)
 
 add_subdirectory(vendor/argparse)
 add_subdirectory(vendor/spdlog)
+add_subdirectory(vendor/yaml-cpp)
 
-target_link_libraries(filetemp PRIVATE argparse spdlog)
+target_link_libraries(filetemp PRIVATE argparse spdlog yaml-cpp)
 target_compile_definitions(filetemp PRIVATE $<$<CONFIG:Debug>:FT_DEBUG>)
+
+if (MSVC)
+    target_compile_options(filetemp PRIVATE /utf-8)
+endif()
