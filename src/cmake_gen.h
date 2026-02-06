@@ -30,5 +30,6 @@ private:
     argparse::ArgumentParser &r_parser;
     ArgumentStorage &r_args;
     YAML::Node m_cache;
+    std::filesystem::path m_cachePath;
 };
 } // namespace ft

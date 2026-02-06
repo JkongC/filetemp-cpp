@@ -1,4 +1,5 @@
-#include <cstdarg>
+#pragma warning(disable : 4996)
+
 #include <exception>
 #include <filesystem>
 #include <format>
@@ -105,7 +106,19 @@ CMakeCacher::CMakeCacher(argparse::ArgumentParser &parser, ArgumentStorage &args
     {
         try
         {
-            m_cache = YAML::LoadFile("./cache/cmake.yaml");
+#ifdef FT_PLATFORM_WINDOWS
+            const char *cache_root = std::getenv("LOCALAPPDATA");
+#elifdef FT_PLATFORM_UNIX
+            const char *cache_root = std::getenv("HOME");
+#else
+#error "System not supported."
+#endif
+            if (cache_root)
+            {
+                m_cachePath = cache_root;
+                (m_cachePath /= ".filetemp") /= "cmake.yaml";
+            }
+            m_cache = YAML::LoadFile(m_cachePath.string());
         }
         catch ([[maybe_unused]] std::exception &e)
         {
@@ -162,7 +175,7 @@ void CMakeCacher::update()
     save_cache(Arg::CMAKE_MAINLANG);
 
 #undef save_cache
-    auto cache_open_result = File::create("./cache/cmake.yaml", FileMode::write);
+    auto cache_open_result = File::create(m_cachePath, FileMode::write);
     if (!cache_open_result)
     {
         log_err("Failed to save cache, save-as may not work as expected.");

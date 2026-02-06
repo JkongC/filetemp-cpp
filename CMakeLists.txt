@@ -31,8 +31,16 @@ add_subdirectory(vendor/yaml-cpp)
 target_link_libraries(filetemp PRIVATE argparse spdlog yaml-cpp)
 target_compile_definitions(filetemp PRIVATE $<$<CONFIG:Debug>:FT_DEBUG>)
 
-if (MSVC)
+if(MSVC)
     target_compile_options(filetemp PRIVATE /utf-8)
+endif()
+
+if(WIN32)
+    target_compile_definitions(filetemp PRIVATE FT_PLATFORM_WINDOWS)
+elseif(UNIX)
+    target_compile_definitions(filetemp PRIVATE FT_PLATFORM_UNIX)
+else()
+    message(FATAL "System not supported.")
 endif()
 
 target_compile_options(filetemp PRIVATE

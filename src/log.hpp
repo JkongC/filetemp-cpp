@@ -101,13 +101,13 @@ struct WithSourceLocation
 struct WithSourceLocation
 {
     template <typename... Args>
-    void log_info(this const WithSourceLocation &self, spdlog::format_string_t<Args...> fmt, Args &&...args)
+    void log_info(spdlog::format_string_t<Args...> fmt, Args &&...args)
     {
         ::ft::log_info(fmt, std::forward<Args>(args)...);
     }
 
     template <typename... Args>
-    void log_err(this const WithSourceLocation &self, spdlog::format_string_t<Args...> fmt, Args &&...args)
+    void log_err(spdlog::format_string_t<Args...> fmt, Args &&...args)
     {
         ::ft::log_err(fmt, std::forward<Args>(args)...);
     }
