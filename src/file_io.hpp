@@ -143,12 +143,12 @@ public:
 
 public:
     File(File &&another)
-        : m_path(std::move(another.m_path))
-        , m_buf(std::move(another.m_buf))
+        : m_buf(std::move(another.m_buf))
+        , m_path(std::move(another.m_path))
         , m_buf_it(another.m_buf_it)
-        , m_mode(another.m_mode)
-        , m_valid(another.m_valid)
         , m_use_buffer(another.m_use_buffer)
+        , m_valid(another.m_valid)
+        , m_mode(another.m_mode)
     {
         m_handle.swap(another.m_handle);
     }
@@ -316,7 +316,7 @@ public:
 
         if (self.m_use_buffer)
         {
-            if (self.m_buf.end() - self.m_buf_it < buf.size())
+            if (static_cast<std::size_t>(self.m_buf.end() - self.m_buf_it) < buf.size())
             {
                 return std::unexpected{ FileReadFailed{ self.m_path } };
             }
@@ -419,7 +419,8 @@ private:
             return;
         }
 
-        auto fptr = std::fopen(reinterpret_cast<const char *>(file_path.u8string().c_str()), mode_flag(mode));
+        std::FILE *fptr;
+        fopen_s(&fptr, reinterpret_cast<const char *>(file_path.u8string().c_str()), mode_flag(mode));
         if (!fptr)
         {
             return;

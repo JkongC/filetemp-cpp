@@ -1,17 +1,22 @@
+#include <cstdarg>
+#include <exception>
 #include <filesystem>
 #include <format>
 
 #include <sstream>
-#include <stdexcept>
 #include <yaml-cpp/yaml.h>
 
+#include "arg_defs.h"
 #include "argparse/argparse.hpp"
 #include "args.hpp"
 #include "file_io.hpp"
+#include "yaml-cpp/exceptions.h"
 #include "yaml-cpp/node/node.h"
 #include "yaml-cpp/node/parse.h"
 #include "cmake_gen.h"
 #include "log.hpp"
+
+using namespace ft;
 
 constexpr std::string_view c_extension = "c";
 constexpr std::string_view cxx_extension = "cpp";
@@ -46,94 +51,145 @@ add_executable({3})
 target_sources({3} PRIVATE src/main.{4})
 target_include_directories({3} PRIVATE src))";
 
-namespace ft
+struct CacheIO
 {
+    argparse::ArgumentParser &parser;
+    ArgumentStorage &args;
+    YAML::Node &cache;
 
-static bool initialize_cache(argparse::ArgumentParser &args,
-                             YAML::Node &cache,
-                             YAML::Node &config_cache,
-                             std::string &used_config,
-                             std::string &save_config)
-{
-    if (auto cfg_opt = args.present("--use-config"))
+    template <typename T>
+    void do_include(const ArgDef &arg)
     {
-        used_config = cfg_opt.value();
-        try
+        if (parser.is_used(arg))
         {
-            cache = YAML::LoadFile("cache/cmake.yaml");
-            config_cache = cache[used_config];
-            if (!config_cache)
-            {
-                WithSourceLocation{}.log_err("Invalid config \"{}\".", used_config);
-                return false;
-            }
-        }
-        catch (std::runtime_error &err)
-        {
-            WithSourceLocation{}.log_err("Failed to load cache file: {}", err.what());
-            return false;
-        }
-    }
-    else if (auto cfg_opt = args.present("--save-as"))
-    {
-        save_config = cfg_opt.value();
-        try
-        {
-            cache = YAML::LoadFile("cache/cmake.yaml");
-        }
-        catch (std::runtime_error &err)
-        {
-            cache = YAML::Node{};
-        }
-    }
-
-    return true;
-}
-
-bool gen_cmake_file(argparse::ArgumentParser &args)
-{
-    using namespace argparse;
-
-    YAML::Node cache{};
-    YAML::Node config_cache{};
-    std::string used_config;
-    std::string save_config;
-
-    if (!initialize_cache(args, cache, config_cache, used_config, save_config))
-    {
-        return false;
-    }
-
-    auto place_arg = [&]<typename T>(ArgumentStringView arg, T &obj)
-    {
-        if (args.is_used(arg.full) || !config_cache || !config_cache[arg.get_name()])
-        {
-            obj = args.get<T>(arg.full);
             return;
         }
 
         try
         {
-            obj = config_cache[arg.get_name()].as<T>();
+            args.get<T>(arg) = cache[arg.name.name()].as<T>();
         }
-        catch (std::runtime_error &err)
+        catch (const YAML::InvalidNode &)
         {
-            WithSourceLocation{}.log_err("Failed to read from cache: {}", err.what());
-            log_info("Using default value for \"{}\"", arg.full);
-            obj = args.get<T>(arg.full);
+            return;
         }
-    };
+        catch (const YAML::BadConversion &)
+        {
+            log_err("Cache file corrupted, arguments may not work as expected.");
+        }
+    }
 
-    std::filesystem::path directory = args.get("directory");
-    int cstd;
-    int cxxstd;
-    std::string proj_name;
-    std::string version;
+    template <typename T>
+    void do_save(const ArgDef &arg)
+    {
+        cache[arg.name.name()] = args.get<T>(arg);
+    }
+};
 
-    place_arg("--cstd", cstd);
-    place_arg("--cxxstd", cxxstd);
-    place_arg("--project", proj_name);
-    place_arg("--version", version);
+namespace ft
+{
+CMakeCacher::CMakeCacher(argparse::ArgumentParser &parser, ArgumentStorage &args) noexcept
+    : r_parser(parser)
+    , r_args(args)
+{
+    std::string_view cfg;
+    YAML::Node cfg_cache;
+    bool use_config = false;
+    if (auto used_cfg = parser.present(Arg::CMAKE_USECONFIG))
+    {
+        cfg = used_cfg.value();
+        use_config = true;
+    }
+
+    if (use_config || parser.present(Arg::CMAKE_SAVEAS))
+    {
+        try
+        {
+            m_cache = YAML::LoadFile("./cache/cmake.yaml");
+        }
+        catch ([[maybe_unused]] std::exception &e)
+        {
+            if (use_config)
+            {
+                log_err("Failed to load cache file, config related options may not work as expected.");
+            }
+            m_cache = YAML::Node{};
+            return;
+        }
+    }
+    else
+    {
+        return;
+    }
+
+    cfg_cache = m_cache[cfg];
+
+    CacheIO includer{ parser, args, cfg_cache };
+
+#define include_cache(arg) includer.do_include<ArgRepr<arg.ident>>(arg)
+
+    include_cache(Arg::CMAKE_VERSION);
+    include_cache(Arg::CMAKE_CSTD);
+    include_cache(Arg::CMAKE_CXXSTD);
+    include_cache(Arg::CMAKE_EXPORTCMD);
+    include_cache(Arg::CMAKE_MAINLANG);
+
+#undef include_cache
+}
+
+void CMakeCacher::update()
+{
+    YAML::Node save_cache;
+    std::string cfg;
+    if (auto saved_cfg = r_parser.present(Arg::CMAKE_SAVEAS))
+    {
+        cfg = saved_cfg.value();
+    }
+    else
+    {
+        return;
+    }
+    save_cache = m_cache[std::string_view{ cfg }];
+
+    CacheIO saver{ r_parser, r_args, save_cache };
+
+#define save_cache(arg) saver.do_save<ArgRepr<arg.ident>>(arg)
+
+    save_cache(Arg::CMAKE_VERSION);
+    save_cache(Arg::CMAKE_CSTD);
+    save_cache(Arg::CMAKE_CXXSTD);
+    save_cache(Arg::CMAKE_EXPORTCMD);
+    save_cache(Arg::CMAKE_MAINLANG);
+
+#undef save_cache
+    auto cache_open_result = File::create("./cache/cmake.yaml", FileMode::write);
+    if (!cache_open_result)
+    {
+        log_err("Failed to save cache, save-as may not work as expected.");
+        return;
+    }
+
+    File &cache_file = cache_open_result.value();
+    std::stringstream yaml_result;
+    yaml_result << m_cache;
+
+    auto cache_write_result = cache_file.write(yaml_result.view());
+    if (!cache_write_result)
+    {
+        log_err("Failed to write into cache file, save-as may not work as expected.");
+    }
+}
+
+bool CMakeOutput::output()
+{
+    using CSTDT = ArgRepr<Arg::CMAKE_CSTD.ident>;
+    using CXXSTDT = ArgRepr<Arg::CMAKE_CXXSTD.ident>;
+
+    std::filesystem::path directory = r_args.get(Arg::CMAKE_WORKDIRECTORY);
+    CSTDT cstd = r_args.get<CSTDT>(Arg::CMAKE_CSTD);
+    CXXSTDT cxxstd = r_args.get<CXXSTDT>(Arg::CMAKE_CXXSTD);
+    std::string proj_name = r_args.get(Arg::CMAKE_PROJECT);
+    std::string version = r_args.get(Arg::CMAKE_VERSION);
 
     if (!std::filesystem::exists(directory))
     {
@@ -151,9 +207,10 @@ bool gen_cmake_file(argparse::ArgumentParser &args)
         return false;
     }
 
-    auto file_create_result = File::create(directory / "CMakeLists.txt", FileMode::write, true);
-    if (!check_file_op_result(file_create_result))
+    auto file_create_result = File::create(directory / "CMakeLists.txt", FileMode::write);
+    if (!file_create_result)
     {
+        log_err("Failed to create CMakeLists.txt.");
         return false;
     }
 
@@ -162,9 +219,9 @@ bool gen_cmake_file(argparse::ArgumentParser &args)
     std::string_view ext;
     std::string_view src;
     std::string_view export_command =
-        args.get<bool>("--export-commands") ? "\nset(CMAKE_EXPORT_COMPILE_COMMANDS ON)\n" : "";
+        r_args.get<bool>("--export-commands") ? "\nset(CMAKE_EXPORT_COMPILE_COMMANDS ON)\n" : "";
 
-    if (args.get("--main-lang") == "C")
+    if (r_args.get("--main-lang") == "C")
     {
         ext = c_extension;
         src = c_example;
@@ -172,7 +229,7 @@ bool gen_cmake_file(argparse::ArgumentParser &args)
     else
     {
         ext = cxx_extension;
-        if (args.get<int>("--cxxstd") >= 23)
+        if (cxxstd >= 23)
         {
             src = cxx23_example;
         }
@@ -182,76 +239,38 @@ bool gen_cmake_file(argparse::ArgumentParser &args)
         }
     }
 
-    std::ignore = file.write(std::format(cmake_template, version, cstd, cxxstd, proj_name, ext, export_command));
+    std::string output = std::format(cmake_template, version, cstd, cxxstd, proj_name, ext, export_command);
 
-    if (args.get<bool>("--show"))
+    auto output_write_result = file.write(output);
+    if (!output_write_result)
+    {
+        log_err("Failed to write into CMakeLists.txt.");
+        return false;
+    }
+
+    if (r_args.get<bool>("--show"))
     {
         std::ignore = file.flush_to(std::cout);
     }
 
-    auto write_result = file.flush();
-    if (!check_file_op_result(write_result))
-    {
-        return false;
-    }
-
-    if (args.get<bool>("--generate-src"))
+    if (r_args.get<bool>("--generate-src"))
     {
         auto src_path = directory / "src";
         if (std::filesystem::create_directories(src_path))
         {
             auto src_create_result = File::create(src_path / (std::string{ "main." }.append(ext)), FileMode::write);
-            if (check_file_op_result(src_create_result))
+            if (src_create_result)
             {
                 auto &src_file = src_create_result.value();
-                std::ignore = src_file.write(src);
+                auto src_write_result = src_file.write(src);
+                if (!src_write_result)
+                {
+                    log_err("Failed to write into source, you may have an empty source file.");
+                }
+                return true;
             }
         }
-    }
-
-    constexpr ArgumentStringView saved_args[]{ "--version", "--cstd", "--cxxstd", "--export-commands", "--main-lang" };
-
-    if (auto save_as_opt = args.present("--save-as"))
-    {
-        auto &save_config = save_as_opt.value();
-        for (const auto &sa : saved_args)
-        {
-            if (args.is_used(sa.full))
-            {
-                if (sa.full == "--cstd" || sa.full == "--cxxstd")
-                {
-                    cache[save_config][sa.get_name()] = args.get<int>(sa.full);
-                }
-                else if (sa.full == "--export-commands")
-                {
-                    cache[save_config][sa.get_name()] = args.get<bool>(sa.full);
-                }
-                else
-                {
-                    cache[save_config][sa.get_name()] = args.get<std::string>(sa.full);
-                }
-            }
-        }
-
-        if (!std::filesystem::exists("./cache"))
-        {
-            std::filesystem::create_directories("./cache");
-        }
-
-        auto cache_open_result = File::create("./cache/cmake.yaml", FileMode::write);
-        if (cache_open_result)
-        {
-            std::stringstream stream;
-            stream << cache;
-            if (!cache_open_result.value().write(stream.str()))
-            {
-                WithSourceLocation{}.log_err("Failed to save config \"{}\".", used_config);
-            }
-        }
-        else
-        {
-            WithSourceLocation{}.log_err("Failed to save to config file.");
-        }
+        log_err("Failed to generate source.");
     }
 
     return true;

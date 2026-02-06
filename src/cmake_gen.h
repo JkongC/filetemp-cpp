@@ -1,29 +1,34 @@
 #pragma once
-#include <args.hpp>
-
-#include "log.hpp"
-#include "file_io.hpp"
-
-template <typename T>
-inline bool check_file_op_result(ft::FileOpResult<T> &result)
-{
-    if (!result)
-    {
-#ifdef FT_DEBUG
-        ft::log_err(std::visit([](auto &&err) { return err.loc; }, result.error()),
-                    "Failed to create file: {}",
-                    std::visit([](auto &&err) { return err.msg(); }, result.error()));
-#else
-        ft::log_err("Failed to create file: {}", std::visit([](auto &&err) { return err.msg(); }, result.error()));
-#endif
-
-        return false;
-    }
-
-    return true;
-}
+#include <argparse/argparse.hpp>
+#include <yaml-cpp/yaml.h>
+#include "args.hpp"
 
 namespace ft
 {
-bool gen_cmake_file(argparse::ArgumentParser &args);
+class CMakeOutput
+{
+public:
+    CMakeOutput(ArgumentStorage &args) noexcept
+        : r_args(args)
+    {
+    }
+
+    bool output();
+
+private:
+    ArgumentStorage &r_args;
+};
+
+class CMakeCacher
+{
+public:
+    CMakeCacher(argparse::ArgumentParser &parser, ArgumentStorage &args) noexcept;
+
+    void update();
+
+private:
+    argparse::ArgumentParser &r_parser;
+    ArgumentStorage &r_args;
+    YAML::Node m_cache;
+};
 } // namespace ft

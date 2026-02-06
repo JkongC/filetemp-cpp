@@ -14,7 +14,11 @@ src/file_io.hpp
 src/log.hpp
 src/cmake_gen.h
 src/cmake_gen.cpp
-src/args.hpp)
+src/args.hpp
+src/gen.h
+src/gen.cpp
+src/file_types.h
+src/arg_defs.h)
 
 target_include_directories(filetemp PRIVATE src)
 
@@ -30,3 +34,9 @@ target_compile_definitions(filetemp PRIVATE $<$<CONFIG:Debug>:FT_DEBUG>)
 if (MSVC)
     target_compile_options(filetemp PRIVATE /utf-8)
 endif()
+
+target_compile_options(filetemp PRIVATE
+    $<$<CXX_COMPILER_ID:GNU>:-Wall -Wextra -pedantic -Werror>
+    $<$<CXX_COMPILER_ID:Clang>:-Wall -Wextra -pedantic -Werror>
+    $<$<CXX_COMPILER_ID:MSVC>:/W4 /WX>
+)
