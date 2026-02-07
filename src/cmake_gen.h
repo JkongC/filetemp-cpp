@@ -1,34 +1,34 @@
 #pragma once
+#include <memory>
+
 #include <argparse/argparse.hpp>
 #include <yaml-cpp/yaml.h>
-#include "args.hpp"
 
 namespace ft
 {
 class CMakeOutput
 {
 public:
-    CMakeOutput(ArgumentStorage &args) noexcept
-        : r_args(args)
-    {
-    }
+    CMakeOutput() noexcept;
+    ~CMakeOutput();
 
     bool output();
 
+    struct Impl;
+
 private:
-    ArgumentStorage &r_args;
+    std::unique_ptr<Impl> m_impl;
 };
 
 class CMakeCacher
 {
 public:
-    CMakeCacher(argparse::ArgumentParser &parser, ArgumentStorage &args) noexcept;
+    CMakeCacher(argparse::ArgumentParser &parser) noexcept;
 
     void update();
 
 private:
     argparse::ArgumentParser &r_parser;
-    ArgumentStorage &r_args;
     YAML::Node m_cache;
     std::filesystem::path m_cachePath;
 };

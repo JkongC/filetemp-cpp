@@ -5,7 +5,6 @@
 
 #include "argparse/argparse.hpp"
 #include "file_types.h"
-#include "args.hpp"
 
 namespace ft
 {
@@ -29,7 +28,7 @@ namespace detail
 
     template <typename T>
     concept ImplOutput = requires(T t) {
-        requires std::is_nothrow_constructible_v<T, ArgumentStorage &>;
+        requires std::is_nothrow_constructible_v<T>;
         t.output();
     };
 
@@ -37,10 +36,7 @@ namespace detail
     class OutputAdapter final : public OutputBase
     {
     public:
-        OutputAdapter(ArgumentStorage &args) noexcept
-            : obj(args)
-        {
-        }
+        OutputAdapter() noexcept {}
 
         OutputAdapter(const OutputAdapter &) = delete;
         OutputAdapter &operator=(const OutputAdapter &) = delete;
@@ -71,7 +67,7 @@ namespace detail
 
     template <typename T>
     concept ImplCacher = requires(T t) {
-        requires std::is_constructible_v<T, argparse::ArgumentParser &, ArgumentStorage &>;
+        requires std::is_constructible_v<T, argparse::ArgumentParser &>;
         t.update();
     };
 
@@ -79,8 +75,8 @@ namespace detail
     class CacherAdapter final : public CacherBase
     {
     public:
-        CacherAdapter(argparse::ArgumentParser &parser, ArgumentStorage &args) noexcept
-            : obj(parser, args)
+        CacherAdapter(argparse::ArgumentParser &parser) noexcept
+            : obj(parser)
         {
         }
 
@@ -99,7 +95,7 @@ namespace detail
 class Output
 {
 public:
-    static Output create(FileType type, ArgumentStorage &args);
+    static Output create(FileType type);
 
     Output(Output &&) = default;
     Output &operator=(Output &&) = default;
@@ -121,7 +117,7 @@ class ScopeCacher
 public:
     // Ctor optionally loads caches from file to ArgumentStorage
     [[nodiscard("ScopeCacher's correctness relies on its lifetime")]]
-    static ScopeCacher create(FileType type, argparse::ArgumentParser &parser, ArgumentStorage &arg_storage);
+    static ScopeCacher create(FileType type, argparse::ArgumentParser &parser);
 
     ScopeCacher(ScopeCacher &&) = default;
     ScopeCacher &operator=(ScopeCacher &&) = default;

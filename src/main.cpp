@@ -1,73 +1,72 @@
 #include <argparse/argparse.hpp>
 #include <exception>
 
-#include "args.hpp"
+#include "arg/arg_basic.h"
+#include "arg/arg_def.h"
+#include "arg/args.h"
 #include "gen.h"
 
 using namespace argparse;
 using namespace ft;
 
-#define ARG(def) def.name.full(), def.name.short_name()
-#define ARGT(a) ArgRepr<arg_ident(a)>
+#define ARG(def) def.full_name(), def.short_name()
 
 int main(int argc, char **argv)
 {
-    ArgumentStorage args;
-
     ArgumentParser program{ "filetemp", "0.1.0" };
 
     ArgumentParser cmake_parser{ "cmake", "", default_arguments::help };
-    cmake_parser.add_argument(Arg::CMAKE_WORKDIRECTORY)
+    cmake_parser.add_argument(Args::CMAKE_WORKDIRECTORY.full_name())
         .help("The output directory")
         .default_value<std::string>(".")
-        .store_into(args.get(Arg::CMAKE_WORKDIRECTORY));
-    cmake_parser.add_argument(ARG(Arg::CMAKE_VERSION))
+        .store_into(&Args::CMAKE_WORKDIRECTORY);
+    cmake_parser.add_argument(ARG(Args::CMAKE_VERSION))
         .help("Minimum cmake version")
-        .default_value<ArgRepr<Arg::CMAKE_VERSION.ident>>("3.0")
+        .default_value<std::string>("3.0")
         .metavar("<ver>")
-        .store_into(args.get(Arg::CMAKE_VERSION));
-    cmake_parser.add_argument(ARG(Arg::CMAKE_CSTD))
+        .store_into(&Args::CMAKE_VERSION);
+    cmake_parser.add_argument(ARG(Args::CMAKE_CSTD))
         .help("C standard")
-        .scan<'i', ArgRepr<Arg::CMAKE_CSTD.ident>>()
+        .scan<'i', ArgType(Args::CMAKE_CSTD)>()
         .default_value(99)
         .metavar("<std>")
-        .store_into(args.get<ArgRepr<Arg::CMAKE_CSTD.ident>>(Arg::CMAKE_CSTD));
-    cmake_parser.add_argument(ARG(Arg::CMAKE_CXXSTD))
+        .store_into(&Args::CMAKE_CSTD);
+    cmake_parser.add_argument(ARG(Args::CMAKE_CXXSTD))
         .help("C++ standard")
-        .scan<'i', ArgRepr<Arg::CMAKE_CXXSTD.ident>>()
+        .scan<'i', ArgType(Args::CMAKE_CXXSTD)>()
         .default_value(20)
         .metavar("<std>")
-        .store_into(args.get<ArgRepr<Arg::CMAKE_CSTD.ident>>(Arg::CMAKE_CXXSTD));
-    cmake_parser.add_argument(ARG(Arg::CMAKE_PROJECT))
+        .store_into(&Args::CMAKE_CXXSTD);
+    cmake_parser.add_argument(ARG(Args::CMAKE_PROJECT))
         .help("Project and executable name")
         .default_value<std::string>("foo")
         .metavar("<name>")
-        .store_into(args.get(Arg::CMAKE_PROJECT));
-    cmake_parser.add_argument(ARG(Arg::CMAKE_MAINLANG))
+        .store_into(&Args::CMAKE_PROJECT);
+    cmake_parser.add_argument(ARG(Args::CMAKE_MAINLANG))
         .help("Main language of the project")
         .default_value<std::string>("CXX")
         .metavar("<lang>")
-        .store_into(args.get(Arg::CMAKE_MAINLANG));
-    cmake_parser.add_argument(ARG(Arg::CMAKE_SAVEAS))
+        .store_into(&Args::CMAKE_MAINLANG);
+    cmake_parser.add_argument(ARG(Args::CMAKE_SAVEAS))
         .help("Save current options to config cache")
         .metavar("<config_name>")
-        .store_into(args.get(Arg::CMAKE_SAVEAS));
-    cmake_parser.add_argument(ARG(Arg::CMAKE_USECONFIG))
+        .store_into(&Args::CMAKE_SAVEAS);
+    cmake_parser.add_argument(ARG(Args::CMAKE_USECONFIG))
         .help("Use config cache")
         .metavar("<config_name>")
-        .store_into(args.get(Arg::CMAKE_USECONFIG));
-    cmake_parser.add_argument(ARG(Arg::CMAKE_EXPORTCMD))
+        .store_into(&Args::CMAKE_USECONFIG);
+    cmake_parser.add_argument(ARG(Args::CMAKE_EXPORTCMD))
         .help("Export compile commands")
         .flag()
-        .store_into(args.get<ArgRepr<Arg::CMAKE_EXPORTCMD.ident>>(Arg::CMAKE_EXPORTCMD));
-    cmake_parser.add_argument(ARG(Arg::CMAKE_GENSRC))
+        .store_into(&Args::CMAKE_EXPORTCMD);
+    cmake_parser.add_argument(ARG(Args::CMAKE_GENSRC))
         .help("Generate source file")
         .flag()
-        .store_into(args.get<ArgRepr<Arg::CMAKE_GENSRC.ident>>(Arg::CMAKE_GENSRC));
-    cmake_parser.add_argument(ARG(Arg::CMAKE_SHOW))
+        .store_into(&Args::CMAKE_GENSRC);
+    cmake_parser.add_argument(ARG(Args::CMAKE_SHOW))
         .help("Show output to console")
         .flag()
-        .store_into(args.get<ArgRepr<Arg::CMAKE_SHOW.ident>>(Arg::CMAKE_SHOW));
+        .store_into(&Args::CMAKE_SHOW);
 
     program.add_subparser(cmake_parser);
 
@@ -88,8 +87,8 @@ int main(int argc, char **argv)
 
     auto run_output = [&](FileType type)
     {
-        auto cacher = ScopeCacher::create(type, cmake_parser, args);
-        auto gen = Output::create(type, args);
+        auto cacher = ScopeCacher::create(type, cmake_parser);
+        auto gen = Output::create(type);
         return gen.output();
     };
 

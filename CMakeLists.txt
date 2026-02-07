@@ -14,11 +14,10 @@ src/file_io.hpp
 src/log.hpp
 src/cmake_gen.h
 src/cmake_gen.cpp
-src/args.hpp
 src/gen.h
 src/gen.cpp
-src/file_types.h
-src/arg_defs.h)
+src/file_types.h)
+add_subdirectory(src/arg)
 
 target_include_directories(filetemp PRIVATE src)
 

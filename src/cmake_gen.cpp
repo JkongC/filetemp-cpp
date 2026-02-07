@@ -1,4 +1,7 @@
+#include "arg/arg_basic.h"
+#include "arg/arg_def.h"
 #pragma warning(disable : 4996)
+#include "arg/args.h"
 
 #include <exception>
 #include <filesystem>
@@ -7,20 +10,15 @@
 #include <sstream>
 #include <yaml-cpp/yaml.h>
 
-#include "arg_defs.h"
 #include "argparse/argparse.hpp"
-#include "args.hpp"
 #include "file_io.hpp"
-#include "yaml-cpp/exceptions.h"
-#include "yaml-cpp/node/node.h"
-#include "yaml-cpp/node/parse.h"
 #include "cmake_gen.h"
 #include "log.hpp"
 
 using namespace ft;
 
-constexpr std::string_view c_extension = "c";
-constexpr std::string_view cxx_extension = "cpp";
+constexpr std::string_view c_fileName = "main.c";
+constexpr std::string_view cxx_fileName = "main.cpp";
 
 constexpr std::string_view c_example = R"(#include <stdio.h>
 int main()
@@ -55,20 +53,19 @@ target_include_directories({3} PRIVATE src))";
 struct CacheIO
 {
     argparse::ArgumentParser &parser;
-    ArgumentStorage &args;
     YAML::Node &cache;
 
     template <typename T>
-    void do_include(const ArgDef &arg)
+    void do_include(Arg<T> &arg)
     {
-        if (parser.is_used(arg))
+        if (parser.is_used(arg.full_name()))
         {
             return;
         }
 
         try
         {
-            args.get<T>(arg) = cache[arg.name.name()].as<T>();
+            arg.assign(cache[arg.name()].template as<T>());
         }
         catch (const YAML::InvalidNode &)
         {
@@ -81,28 +78,27 @@ struct CacheIO
     }
 
     template <typename T>
-    void do_save(const ArgDef &arg)
+    void do_save(const Arg<T> &arg)
     {
-        cache[arg.name.name()] = args.get<T>(arg);
+        cache[arg.name()] = *arg;
     }
 };
 
 namespace ft
 {
-CMakeCacher::CMakeCacher(argparse::ArgumentParser &parser, ArgumentStorage &args) noexcept
+CMakeCacher::CMakeCacher(argparse::ArgumentParser &parser) noexcept
     : r_parser(parser)
-    , r_args(args)
 {
     std::string_view cfg;
     YAML::Node cfg_cache;
     bool use_config = false;
-    if (auto used_cfg = parser.present(Arg::CMAKE_USECONFIG))
+    if (auto used_cfg = parser.present(Args::CMAKE_USECONFIG.full_name()))
     {
         cfg = used_cfg.value();
         use_config = true;
     }
 
-    if (use_config || parser.present(Arg::CMAKE_SAVEAS))
+    if (use_config || parser.present(Args::CMAKE_SAVEAS.full_name()))
     {
         try
         {
@@ -120,7 +116,7 @@ CMakeCacher::CMakeCacher(argparse::ArgumentParser &parser, ArgumentStorage &args
             }
             m_cache = YAML::LoadFile(m_cachePath.string());
         }
-        catch ([[maybe_unused]] std::exception &e)
+        catch (std::exception &)
         {
             if (use_config)
             {
@@ -137,24 +133,20 @@ CMakeCacher::CMakeCacher(argparse::ArgumentParser &parser, ArgumentStorage &args
 
     cfg_cache = m_cache[cfg];
 
-    CacheIO includer{ parser, args, cfg_cache };
+    CacheIO includer{ parser, cfg_cache };
 
-#define include_cache(arg) includer.do_include<ArgRepr<arg.ident>>(arg)
-
-    include_cache(Arg::CMAKE_VERSION);
-    include_cache(Arg::CMAKE_CSTD);
-    include_cache(Arg::CMAKE_CXXSTD);
-    include_cache(Arg::CMAKE_EXPORTCMD);
-    include_cache(Arg::CMAKE_MAINLANG);
-
-#undef include_cache
+    includer.do_include(Args::CMAKE_VERSION);
+    includer.do_include(Args::CMAKE_CSTD);
+    includer.do_include(Args::CMAKE_CXXSTD);
+    includer.do_include(Args::CMAKE_EXPORTCMD);
+    includer.do_include(Args::CMAKE_MAINLANG);
 }
 
 void CMakeCacher::update()
 {
     YAML::Node save_cache;
     std::string cfg;
-    if (auto saved_cfg = r_parser.present(Arg::CMAKE_SAVEAS))
+    if (auto saved_cfg = r_parser.present(Args::CMAKE_SAVEAS.full_name()))
     {
         cfg = saved_cfg.value();
     }
@@ -164,17 +156,14 @@ void CMakeCacher::update()
     }
     save_cache = m_cache[std::string_view{ cfg }];
 
-    CacheIO saver{ r_parser, r_args, save_cache };
+    CacheIO saver{ r_parser, save_cache };
 
-#define save_cache(arg) saver.do_save<ArgRepr<arg.ident>>(arg)
+    saver.do_save(Args::CMAKE_VERSION);
+    saver.do_save(Args::CMAKE_CSTD);
+    saver.do_save(Args::CMAKE_CXXSTD);
+    saver.do_save(Args::CMAKE_EXPORTCMD);
+    saver.do_save(Args::CMAKE_MAINLANG);
 
-    save_cache(Arg::CMAKE_VERSION);
-    save_cache(Arg::CMAKE_CSTD);
-    save_cache(Arg::CMAKE_CXXSTD);
-    save_cache(Arg::CMAKE_EXPORTCMD);
-    save_cache(Arg::CMAKE_MAINLANG);
-
-#undef save_cache
     auto cache_open_result = File::create(m_cachePath, FileMode::write);
     if (!cache_open_result)
     {
@@ -193,99 +182,134 @@ void CMakeCacher::update()
     }
 }
 
-bool CMakeOutput::output()
+struct CMakeOutput::Impl
 {
-    using CSTDT = ArgRepr<Arg::CMAKE_CSTD.ident>;
-    using CXXSTDT = ArgRepr<Arg::CMAKE_CXXSTD.ident>;
+    std::filesystem::path m_directory;
+    std::string m_projName;
+    std::string m_version;
+    ArgType(Args::CMAKE_CSTD) m_cstd;
+    ArgType(Args::CMAKE_CXXSTD) m_cxxstd;
 
-    std::filesystem::path directory = r_args.get(Arg::CMAKE_WORKDIRECTORY);
-    CSTDT cstd = r_args.get<CSTDT>(Arg::CMAKE_CSTD);
-    CXXSTDT cxxstd = r_args.get<CXXSTDT>(Arg::CMAKE_CXXSTD);
-    std::string proj_name = r_args.get(Arg::CMAKE_PROJECT);
-    std::string version = r_args.get(Arg::CMAKE_VERSION);
+    Impl() noexcept {}
 
-    if (!std::filesystem::exists(directory))
+    bool ensure_dir_valid_and_exists()
     {
-        std::error_code ec;
-        std::filesystem::create_directories(directory, ec);
-        if (ec)
+        if (!std::filesystem::exists(m_directory))
         {
-            WithSourceLocation{}.log_err("Fail to create directory \"{}\"", directory.string());
+            std::error_code ec;
+            std::filesystem::create_directories(m_directory, ec);
+            if (ec)
+            {
+                WithSourceLocation{}.log_err("Fail to create directory \"{}\"", m_directory.string());
+                return false;
+            }
+        }
+        else if (!std::filesystem::is_directory(m_directory))
+        {
+            WithSourceLocation{}.log_err("Not a directory: \"{}\"", m_directory.string());
             return false;
         }
-    }
-    else if (!std::filesystem::is_directory(directory))
-    {
-        WithSourceLocation{}.log_err("Not a directory: \"{}\"", directory.string());
-        return false;
+
+        return true;
     }
 
-    auto file_create_result = File::create(directory / "CMakeLists.txt", FileMode::write);
-    if (!file_create_result)
+    bool output()
     {
-        log_err("Failed to create CMakeLists.txt.");
-        return false;
-    }
+        m_directory = *Args::CMAKE_WORKDIRECTORY;
+        m_cstd = *Args::CMAKE_CSTD;
+        m_cxxstd = *Args::CMAKE_CXXSTD;
+        m_projName = *Args::CMAKE_PROJECT;
+        m_version = *Args::CMAKE_VERSION;
 
-    auto &file = file_create_result.value();
-
-    std::string_view ext;
-    std::string_view src;
-    std::string_view export_command =
-        r_args.get<bool>("--export-commands") ? "\nset(CMAKE_EXPORT_COMPILE_COMMANDS ON)\n" : "";
-
-    if (r_args.get("--main-lang") == "C")
-    {
-        ext = c_extension;
-        src = c_example;
-    }
-    else
-    {
-        ext = cxx_extension;
-        if (cxxstd >= 23)
+        if (!ensure_dir_valid_and_exists())
         {
-            src = cxx23_example;
+            return false;
+        }
+
+        auto file_create_result = File::create(m_directory / "CMakeLists.txt", FileMode::write);
+        if (!file_create_result)
+        {
+            log_err("Failed to create CMakeLists.txt.");
+            return false;
+        }
+
+        auto &file = file_create_result.value();
+
+        std::string_view filename;
+        std::string_view src;
+        std::string_view export_command = *Args::CMAKE_EXPORTCMD ? "\nset(CMAKE_EXPORT_COMPILE_COMMANDS ON)\n" : "";
+
+        if (*Args::CMAKE_MAINLANG == "C")
+        {
+            filename = c_fileName;
+            src = c_example;
         }
         else
         {
-            src = cxx_example;
-        }
-    }
-
-    std::string output = std::format(cmake_template, version, cstd, cxxstd, proj_name, ext, export_command);
-
-    auto output_write_result = file.write(output);
-    if (!output_write_result)
-    {
-        log_err("Failed to write into CMakeLists.txt.");
-        return false;
-    }
-
-    if (r_args.get<bool>("--show"))
-    {
-        std::ignore = file.flush_to(std::cout);
-    }
-
-    if (r_args.get<bool>("--generate-src"))
-    {
-        auto src_path = directory / "src";
-        if (std::filesystem::create_directories(src_path))
-        {
-            auto src_create_result = File::create(src_path / (std::string{ "main." }.append(ext)), FileMode::write);
-            if (src_create_result)
+            filename = cxx_fileName;
+            if (m_cxxstd >= 23)
             {
-                auto &src_file = src_create_result.value();
-                auto src_write_result = src_file.write(src);
-                if (!src_write_result)
-                {
-                    log_err("Failed to write into source, you may have an empty source file.");
-                }
-                return true;
+                src = cxx23_example;
+            }
+            else
+            {
+                src = cxx_example;
             }
         }
-        log_err("Failed to generate source.");
-    }
 
-    return true;
+        std::string output =
+            std::format(cmake_template, m_version, m_cstd, m_cxxstd, m_projName, filename, export_command);
+
+        auto output_write_result = file.write(output);
+        if (!output_write_result)
+        {
+            log_err("Failed to write into CMakeLists.txt.");
+            return false;
+        }
+
+        if (*Args::CMAKE_SHOW)
+        {
+            std::ignore = file.flush_to(std::cout);
+        }
+
+        if (*Args::CMAKE_GENSRC)
+        {
+            auto src_path = m_directory / "src";
+            if (!std::filesystem::create_directories(src_path))
+            {
+                log_err("Failed to create directories for source files.");
+                return true;
+            }
+
+            auto src_create_result = File::create(src_path / filename, FileMode::write);
+            if (!src_create_result)
+            {
+                log_err("Failed to create source files, you may have empty directories.");
+                return true;
+            }
+
+            auto &src_file = src_create_result.value();
+            auto src_write_result = src_file.write(src);
+            if (!src_write_result)
+            {
+                log_err("Failed to write into source, you may have an empty source file.");
+            }
+            return true;
+        }
+
+        return true;
+    }
+};
+
+bool CMakeOutput::output()
+{
+    return m_impl->output();
 }
+
+CMakeOutput::CMakeOutput() noexcept
+    : m_impl(std::make_unique<Impl>())
+{
+}
+
+CMakeOutput::~CMakeOutput() {}
 } // namespace ft
